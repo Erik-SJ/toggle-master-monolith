@@ -1,0 +1,282 @@
+# Gerenciamento das credencias de acesso ao banco
+
+* Crie um arquivo .env:
+
+DB_USER=myuser
+DB_PASSWORD=mypassword
+DB_NAME=mydatabase
+
+* Depois use no docker-compose.yml:
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+	  
+* O Docker Compose carrega automaticamente o .env
+
+* Criar um arquivo .gitignore para não commitar o .env
+.gitignore
+# Variáveis de ambiente
+.env
+.env.*
+
+--------------------------------------------------------
+
+# Acesso a EC2 Linux AWS via IP Público
+
+- Usuários: ec2-user, ubuntu, debian ou root
+- Liberar a porta 22 no Security Group
+- Windows: converter o arquivo .pem para .ppk no PuTTYgen
+
+$ chmod 400 /caminho/para/sua-chave.pem
+$ ssh -i "sua-chave.pem" usuario@ip-publico-da-instancia
+
+--------------------------------------------------------
+
+# Acesso a EC2 Linux AWS via DNS
+
+- Via DNS Público AWS: (ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com)
+- Necessário que as opções de DNS estejam ativadas na VPC
+$ ssh -i "sua-chave.pem" usuario@ec2-xxx-xxx-xxx-xxx.compute-1.amazonaws.com
+
+- Configurar o Registro do tipo A no Route 53
+$ ssh -i "sua-chave.pem" usuario@app.seudominio.com
+
+--------------------------------------------------------------------------------
+
+# Acesso a EC2 Linux AWS via IAM Role + Session Manager (sem SSH e sem chave)
+
+- Mais seguro, pois não precisa abrir porta 22.
+- Crie uma role com política: AmazonSSMManagedInstanceCore
+- Anexe a role à instância EC2.
+- Instale/configure o agente SSM (normalmente já vem nas AMIs modernas).
+- Conecte: aws ssm start-session --target i-INSTANCE_ID
+
+--------------------------------------------------------------------------------
+
+# Acesso a AWS via Vault (sem SSH e sem chave) - Via Linux
+
+OBS: Não funciona via WSL (aws-vault: error: Specified keyring backend not available)
+
+- Armazenar e usa credenciais  de forma segura.
+- Não expõe Access Key e Secret Key em arquivos ou variáveis de ambiente.
+- Gera credenciais temporárias via IAM / STS e guarda o segredo criptografado no keychain do sistema.
+
+$ aws-vault add <nome>
+AWS Access Key ID:
+AWS Secret Access Key:
+$ aws-vault list
+$ aws-vault exec <nome> -- aws sts get-caller-identity
+$ aws-vault exec <nome> -- bash
+$ aws s3 ls
+$ aws ec2 describe-instances
+$ etc..
+
+--------------------------------------------------------------------------------
+
+# Tags AWS
+
+- Name
+- Environment
+- Project
+- CostCenter
+- Owner
+
+--------------------------------------------------------
+
+# Terraform
+
+* Provider AWS (provider.tf)
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+* Não expor "access-key" e "secret-key" no código (credencias de acesso)
+
+1. Variáveis e arquivos de variáveis (.tfvars)
+
+- variables.tf:
+variable "aws_access_key" {
+  description = "AWS access key"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_key" {
+  description = "AWS secret key"
+  type        = string
+  sensitive   = true
+}
+- No terraform.tfvars:
+
+aws_access_key = "YOUR_ACCESS_KEY"
+aws_secret_key = "YOUR_SECRET_KEY"
+
+Obs: arquivo .tfvars deve ser adicionado no .gitignore para não ser versionado.
+
+2. Variáveis de ambiente
+
+Terraform reconhece automaticamente variáveis de ambiente da AWS:
+export AWS_ACCESS_KEY_ID="YOUR_ACCESS_KEY"
+export AWS_SECRET_ACCESS_KEY="YOUR_SECRET_KEY"
+export AWS_REGION="us-west-2"
+
+3. Perfis da AWS (AWS CLI)
+
+Se você tiver perfis (vault/sso) configurados no ~/.aws/credentials:
+provider "aws" {
+  region  = "us-east-1"
+  profile = "meu-perfil"
+}
+
+* Arquivo de variáveis (variables.tf)
+
+variable location {
+  type        = string
+  default     = "eastus2"
+  description = "Localização do Recurso"
+}
+
+---------------------------------------------------------------------------------
+
+# VPC / ACL / Security Group
+
+| Feature    | VPC                   | Security Group      | Network ACL        |
+| ---------- | --------------------- | ------------------- | ------------------ |
+| Scope      | Entire network        | Individual resource | Subnet             |
+| Type       | Network container     | Stateful firewall   | Stateless firewall |
+| Rules      | Network configuration | Allow only          | Allow & Deny       |
+| Evaluation | Routing layer         | Resource-level      | Ordered rule list  |
+| Applies to | Subnets/resources     | Instances/services  | Subnets            |
+
+* Firewall Stateful (com estado/guarda sessões)
+- Cliente envia uma requisição.
+- O firewall registra essa conexão.
+- Quando a resposta volta, o firewall permite automaticamente, porque sabe que faz parte da mesma sessão.
+
+* Firewall Stateless (sem estado)
+- O firewall verifica cada pacote separadamente: Ida e Volta
+- Ambos precisam de regras explícitas.
+- Se a regra de retorno não existir, o tráfego será bloqueado.
+---------------------------------------------------------------------------------
+
+# Desafios encontrados e Decisões tomadas:
+
+* Lab Local
+- Foi necessário alterar "DB_PORT=7000". Na porta 5432 não conecta.
+- Alterado as Credenciais do Banco para variáveis de ambiente (.env).
+- Criado um arquivo ".gitignore" para não replicar as alterações para o Github.
+
+* Lab AWS
+EC2 (Ubuntu Server 22.04 LTS)
+Network padrão: vpc/rt/sg/igw
+key.pem (ssh - rsa)
+Role: LabInstanceProfile
+SG: Inbound Rules (Portas 22 e 5000)
+
+* Acesso SSH *
+sudo chmod 400 <key.pem>
+sudo ssh -i key-ubuntu.pem ubuntu@ip
+
+* Instalações *
+sudo apt update && sudo apt upgrade -y
+sudo apt install git -y
+git --version
+sudo apt install -y git python3-pip python3-venv
+
+* Clonar repositório Git *
+git clone https://github.com/Erik-SJ/toggle-master-monolith.git
+
+* Criar ambiente Virtual para o Python *
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+* Exportar variáveis de ambiente do RDS *
+export DB_HOST='<aqui-vai-o-endpoint-do-seu-rds>'
+export DB_NAME='<nome-do-banco-de-dados-que-voce-criou>'
+export DB_USER='<usuario-admin-do-rds>'
+export DB_PASSWORD='<senha-do-usuario-admin>'
+
+* Iniciar a aplicação * 
+gunicorn --bind 0.0.0.0:5000 app:app
+python3 app.py (outra alternativa)
+
+* Testes sem o RDS *
+http://<ip>:5000/health
+curl <ip>:5000/health
+
+* Testes com RDS *
+- Necessário criar a tabela "flags".
+- Mesmo executando o script "python3 app.py", não criou a tabela.
+
+- Acessar DB através da EC2:
+
+psql -h <db_host> -U postgres -d <db_name>
+
+- Criar a tabela "flags":
+
+CREATE TABLE flags (
+               id SERIAL PRIMARY KEY,
+               name VARCHAR(100) UNIQUE NOT NULL,
+               is_enabled BOOLEAN NOT NULL DEFAULT false,
+               created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+           );
+		   
+- Consultar as tabelas criadas:
+
+SELECT schemaname, tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname NOT IN ('pg_catalog', 'information_schema');
+
+* Testes após a criação da tabela:
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"name": "testedb", "is_enabled": true}' \
+  http://<ip>:5000/flags
+  
+curl -X GET http://<ip>:5000/flags
+ 
+curl -X GET http://localhost:5000/flags/<flag-name>
+
+curl -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{"is_enabled": false}' \
+  http://localhost:5000/flags/<flag-name>
+  
+* Install RDS *
+- Create DB subnet group (2 subnets dedicadas para o DB)
+- Connectivity: Don't connect to an EC2 compute resource
+- VPC-Lab (2 subs, 2 AZs)
+- Associar o DB Subnet Group criado antes
+- Public access: No
+- VPC security group: sg_db_lab
+- Create database name
+- sg_lab: Não precisa alterar nada
+- sg_db_lab: Add Inbound Rule na Porta 5432 vindo do sg_lab
+  
+* Notas
+Route 53: Necessário ter um domínio registrado para acessar via DNS
+VPC (vpc-lab): 10.1.0.0/24
+Subnet (subnet-lab): 10.1.0.0/26
+Security Group (sg_lab): 22 e 5000
+Route Table: Cria automaticamente junto com a VPC
+Internet Gateway (igw-lab): anexar na vpc e route table
+SSM Session Manager: Só conecta se o igw estiver configurado e a role anexada
+Role "LabInstanceProfile": Serve apenas para a SSM Session Manager
+---------------------------------------------------------------------------------
