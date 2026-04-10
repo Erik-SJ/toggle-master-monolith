@@ -47,7 +47,7 @@ if __name__ == "__main__":
 def init_db():
     print("Tentando inicializar a tabela 'flags'...")
     try:
-        conn = get_db_connection()
+        conn = get_db_connection(secret)
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flags (
@@ -84,7 +84,7 @@ def create_flag():
     is_enabled = data.get('is_enabled', False)
     
     try:
-        conn = get_db_connection()
+        conn = get_db_connection(secret)
         cur = conn.cursor()
         cur.execute("INSERT INTO flags (name, is_enabled) VALUES (%s, %s)", (name, is_enabled))
         conn.commit()
@@ -103,7 +103,7 @@ def create_flag():
 @app.route('/flags', methods=['GET'])
 def get_flags():
     try:
-        conn = get_db_connection()
+        conn = get_db_connection(secret)
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT name, is_enabled FROM flags ORDER BY name")
         flags = cur.fetchall()
@@ -120,7 +120,7 @@ def get_flags():
 @app.route('/flags/<string:name>', methods=['GET'])
 def get_flag_status(name):
     try:
-        conn = get_db_connection()
+        conn = get_db_connection(secret)
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT name, is_enabled FROM flags WHERE name = %s", (name,))
         flag = cur.fetchone()
@@ -145,7 +145,7 @@ def update_flag(name):
     is_enabled = data['is_enabled']
     
     try:
-        conn = get_db_connection()
+        conn = get_db_connection(secret)
         cur = conn.cursor()
         cur.execute("UPDATE flags SET is_enabled = %s WHERE name = %s", (is_enabled, name))
         
