@@ -68,7 +68,8 @@ def init_db():
 
 @app.cli.command("init-db")
 def init_db_command():
-    init_db()
+    secret = get_secret ("db_connection")
+    init_db(secret)
 
 @app.route('/health', methods=['GET'])
 def health_check():
